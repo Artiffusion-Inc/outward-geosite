@@ -66,6 +66,10 @@ jobs:
           curl -sSL https://antifilter.download/list/domains.lst > community/data/antifilter-download
           curl -sSL https://community.antifilter.download/list/domains.lst > community/data/antifilter-download-community
           curl -sSL https://raw.githubusercontent.com/1andrevich/Re-filter-lists/main/domains_all.lst > community/data/refilter
+          # Filter non-ASCII (IDN/Cyrillic) domains that break v2fly compiler
+          for f in community/data/antifilter-download community/data/antifilter-download-community community/data/refilter; do
+            [ -f "$f" ] && grep -vP "[^\x00-\x7F]" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+          done
 
           # 5. Build ad block list from AdGuard + Peter Lowe
           curl -sSL https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt \
