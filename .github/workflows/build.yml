@@ -1,0 +1,142 @@
+name: Build geosite
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3,9,15,21 * * *"
+  push:
+    branches: [main, master]
+    paths-ignore:
+      - "README.md"
+      - "LICENSE"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set variables
+        run: |
+          echo "TAG_NAME=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
+          echo "RELEASE_NAME=Released on $(date +%Y%m%d%H%M)" >> $GITHUB_ENV
+
+      - name: Checkout v2fly/domain-list-community
+        uses: actions/checkout@v4
+        with:
+          repository: v2fly/domain-list-community
+          path: community
+          fetch-depth: 1
+
+      - name: Checkout hydraponique/roscomvpn-geosite
+        uses: actions/checkout@v4
+        with:
+          repository: hydraponique/roscomvpn-geosite
+          path: roscomvpn
+          fetch-depth: 1
+
+      - name: Checkout runetfreedom/russia-domains-list
+        uses: actions/checkout@v4
+        with:
+          repository: runetfreedom/russia-domains-list
+          path: russia-domains
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: community/go.mod
+          cache: true
+          cache-dependency-path: community/go.sum
+
+      - name: Merge data sources and apply fixes
+        run: |
+          set -euo pipefail
+
+          # 1. v2fly base data is already in community/data/
+          # 2. Overlay roscomvpn custom categories (torrent, category-ru, whitelist, etc.)
+          cp -f roscomvpn/data/* community/data/ 2>/dev/null || true
+          # 3. Add russia-domains-list (ru-available-only-inside)
+          cp -f russia-domains/* community/data/ 2>/dev/null || true
+
+          # 4. Download RKN-blocked domain lists
+          curl -sSL https://antifilter.download/list/domains.lst > community/data/antifilter-download
+          curl -sSL https://community.antifilter.download/list/domains.lst > community/data/antifilter-download-community
+          curl -sSL https://raw.githubusercontent.com/1andrevich/Re-filter-lists/main/domains_all.lst > community/data/refilter
+
+          # 5. Build ad block list from AdGuard + Peter Lowe
+          curl -sSL https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt \
+            | perl -ne '/^\|\|([-_0-9a-zA-Z]+(\.[-_0-9a-zA-Z]+){1,64})\^$/ && print "$1\n"' \
+            | perl -ne 'print if not /^[0-9]{1,3}(\.[0-9]{1,3}){3}$/' > /tmp/adblock.txt
+          curl -sSL 'https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=1&mimetype=plaintext' \
+            | perl -ne '/^127\.0\.0\.1\s([-_0-9a-zA-Z]+(\.[-_0-9a-zA-Z]+){1,64})$/ && print "$1\n"' >> /tmp/adblock.txt
+          sed -i '/t.co/d' /tmp/adblock.txt
+          sort --ignore-case -u /tmp/adblock.txt > community/data/category-ads-all
+
+          # 6. Build ru-blocked categories
+          printf 'include:antifilter-download-community\ninclude:refilter\n' > community/data/ru-blocked
+          printf 'include:antifilter-download\ninclude:antifilter-download-community\ninclude:refilter\n' > community/data/ru-blocked-all
+
+          # 7. FIX: Remove IP checkers from category-ru and whitelist
+          #    roscomvpn intentionally includes them for "direct" routing,
+          #    but we block them via category-ip-geo-detect instead.
+          for f in category-ru whitelist; do
+            if [ -f "community/data/$f" ]; then
+              sed -i '/ipify\.org/d;/checkip\.amazonaws\.com/d;/ifconfig\.me/d;/ip\.sb/d;/2ip\.ru/d;/ipapi\.is/d;/iplocate\.io/d' "community/data/$f"
+            fi
+          done
+
+          echo "=== Data files ==="
+          ls -1 community/data/ | head -40
+          echo "..."
+
+      - name: Build geosite.dat
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/out /tmp/publish
+          cd community
+          go run ./ -outputdir=/tmp/out
+          test -s /tmp/out/dlc.dat
+          cp /tmp/out/dlc.dat /tmp/publish/geosite.dat
+          (cd /tmp/publish && sha256sum geosite.dat > geosite.dat.sha256)
+          echo "=== geosite.dat size ==="
+          ls -lh /tmp/publish/geosite.dat
+
+      - name: Checkout geodat2srs
+        uses: actions/checkout@v4
+        with:
+          repository: runetfreedom/geodat2srs
+          path: geodat2srs
+          fetch-depth: 1
+
+      - name: Build sing-box .srs
+        run: |
+          set -euo pipefail
+          cd geodat2srs
+          go build .
+          mkdir -p /tmp/publish/sing-box
+          ./geodat2srs geosite -i /tmp/publish/geosite.dat -o /tmp/publish/sing-box/
+          echo "=== .srs count ==="
+          ls /tmp/publish/sing-box/ | wc -l
+
+      - name: Release and upload assets
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          release_name: ${{ env.RELEASE_NAME }}
+          tag: ${{ env.TAG_NAME }}
+          file_glob: true
+          file: /tmp/publish/*
+
+      - name: Push to release branch
+        run: |
+          cd /tmp/publish
+          git init
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b release
+          git add .
+          git commit -m "${{ env.RELEASE_NAME }}"
+          git remote add origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
+          git push -f -u origin release
