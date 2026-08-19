@@ -68,7 +68,7 @@ jobs:
           curl -sSL https://raw.githubusercontent.com/1andrevich/Re-filter-lists/main/domains_all.lst > community/data/refilter
           # Filter invalid domains (IDN, underscores, etc.) that break v2fly compiler
           for f in community/data/antifilter-download community/data/antifilter-download-community community/data/refilter; do
-            [ -f "$f" ] && grep -vP "[^a-zA-Z0-9.\-]" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+            [ -f "$f" ] && sed -i "s/.$//" "$f" && grep -vP "[^a-zA-Z0-9.\-]" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
           done
 
           # 5. Build ad block list from AdGuard + Peter Lowe
