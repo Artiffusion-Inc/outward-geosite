@@ -59,6 +59,8 @@ jobs:
           cp -f roscomvpn/data/* community/data/ 2>/dev/null || true
           # 3. Add russia-domains-list (ru-available-only-inside)
           cp -f russia-domains/* community/data/ 2>/dev/null || true
+          # Remove non-data files that break the compiler
+          rm -f community/data/README* community/data/LICENSE 2>/dev/null || true
 
           # 4. Download RKN-blocked domain lists
           curl -sSL https://antifilter.download/list/domains.lst > community/data/antifilter-download
