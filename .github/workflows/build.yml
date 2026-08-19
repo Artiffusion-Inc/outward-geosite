@@ -88,8 +88,8 @@ jobs:
           done
 
           echo "=== Data files ==="
-          ls -1 community/data/ | head -40
-          echo "..."
+          ls -1 community/data/ | head -40 || true
+          
 
       - name: Build geosite.dat
         run: |
