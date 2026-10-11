@@ -1,4 +1,4 @@
-# hypcat-geosite
+# outward-geosite
 
 Auto-updated custom `geosite.dat` combining multiple sources for optimal RU/BY proxy routing.
 
@@ -20,10 +20,10 @@ Auto-updated custom `geosite.dat` combining multiple sources for optimal RU/BY p
 
 ```bash
 # Latest release
-curl -fsSL https://github.com/Xpos587/hypcat-geosite/releases/latest/download/geosite.dat -o geosite.dat
+curl -fsSL https://github.com/Artiffusion-Inc/outward-geosite/releases/latest/download/geosite.dat -o geosite.dat
 
 # release branch (raw)
-curl -fsSL https://raw.githubusercontent.com/Xpos587/hypcat-geosite/release/geosite.dat -o geosite.dat
+curl -fsSL https://raw.githubusercontent.com/Artiffusion-Inc/outward-geosite/release/geosite.dat -o geosite.dat
 ```
 
 ## Update schedule
